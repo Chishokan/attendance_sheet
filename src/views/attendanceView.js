@@ -6,7 +6,8 @@ import { toCsv } from "../lib/csv.js";
 import { download } from "../lib/dom.js";
 
 // 画面内で保持する選択状態（再描画をまたいで保持）
-const ui = { campusId: null, date: null };
+const today = new Date();
+const ui = { campusId: null, year: today.getFullYear(), month: today.getMonth() + 1, date: null };
 
 export function renderAttendance(state) {
   const { masters, students } = state;
@@ -28,48 +29,64 @@ export function renderAttendance(state) {
     const firstCampus = masters.campuses.find((c) => enrolledCampusNames.has(c.name)) || masters.campuses[0];
     ui.campusId = firstCampus.id;
   }
-  if (!ui.date) {
-    const now = new Date();
-    const dates = classDatesInMonth(masters.timetable, ui.campusId, now.getFullYear(), now.getMonth() + 1);
-    ui.date = dates[0] || new Date().toISOString().slice(0, 10);
-  }
 
-  // ---- 操作バー ----
+  // 選択中の校舎×年月の開講日（授業日）一覧
+  const classDates = classDatesInMonth(masters.timetable, ui.campusId, ui.year, ui.month);
+  // 選択中の授業日が当月になければ先頭にリセット
+  if (!classDates.includes(ui.date)) ui.date = classDates[0] || null;
+
+  // ---- 操作バー（校舎別・月別のプルダウン選択） ----
   const campusSelect = h("select", {
     class: "input",
-    onchange: (e) => { ui.campusId = Number(e.target.value); rerender(); },
+    onchange: (e) => { ui.campusId = Number(e.target.value); ui.date = null; rerender(); },
   }, masters.campuses.map((c) => h("option", { value: c.id, selected: c.id === ui.campusId }, c.name)));
 
-  const dateInput = h("input", {
-    type: "date", class: "input", value: ui.date,
-    onchange: (e) => { ui.date = e.target.value; rerender(); },
-  });
+  const years = [];
+  for (let y = today.getFullYear() - 2; y <= today.getFullYear() + 1; y++) years.push(y);
+  if (!years.includes(ui.year)) years.push(ui.year);
+  years.sort((a, b) => a - b);
+  const yearSelect = h("select", {
+    class: "input narrow",
+    onchange: (e) => { ui.year = Number(e.target.value); ui.date = null; rerender(); },
+  }, years.map((y) => h("option", { value: y, selected: y === ui.year }, `${y}年`)));
 
-  // その月の開講日へのクイック選択
-  const d = new Date(ui.date + "T00:00:00");
-  const monthDates = classDatesInMonth(masters.timetable, ui.campusId, d.getFullYear(), d.getMonth() + 1);
-  const dateQuick = h("select", {
-    class: "input", onchange: (e) => { if (e.target.value) { ui.date = e.target.value; rerender(); } },
-  }, [
-    h("option", { value: "" }, `${d.getMonth() + 1}月の開講日…`),
-    ...monthDates.map((dt) => h("option", { value: dt, selected: dt === ui.date }, formatDate(dt))),
-  ]);
+  const monthSelect = h("select", {
+    class: "input narrow",
+    onchange: (e) => { ui.month = Number(e.target.value); ui.date = null; rerender(); },
+  }, Array.from({ length: 12 }, (_, i) => h("option", { value: i + 1, selected: i + 1 === ui.month }, `${i + 1}月`)));
+
+  const daySelect = h("select", {
+    class: "input",
+    onchange: (e) => { ui.date = e.target.value || null; rerender(); },
+  }, classDates.length
+    ? classDates.map((dt) => h("option", { value: dt, selected: dt === ui.date }, formatDayOption(dt, masters)))
+    : [h("option", { value: "" }, "開講日なし")]);
 
   wrap.appendChild(h("div", { class: "card toolbar" }, [
     field("校舎", campusSelect),
-    field("日付", dateInput),
-    field("開講日", dateQuick),
+    field("年", yearSelect),
+    field("月", monthSelect),
+    field("授業日", daySelect),
   ]));
+
+  const campusName = masters.campuses.find((c) => c.id === ui.campusId)?.name || "";
+
+  // 当月に開講日がない場合
+  if (!ui.date) {
+    wrap.appendChild(h("div", { class: "card" }, [
+      h("p", { class: "muted" }, `${campusName} は ${ui.year}年${ui.month}月 に開講予定がありません。校舎・月を変更してください。`),
+    ]));
+    return wrap;
+  }
 
   // ---- 出席簿本体 ----
   const board = buildBoard({ timetable: masters.timetable, campuses: masters.campuses, students }, ui.campusId, ui.date);
-  const campusName = masters.campuses.find((c) => c.id === ui.campusId)?.name || "";
   const wid = weekdayIdOfDate(ui.date);
   const weekdayName = masters.weekdays.find((w) => w.id === wid)?.name || "";
 
   if (!board.hasClass) {
     wrap.appendChild(h("div", { class: "card" }, [
-      h("p", { class: "muted" }, `${campusName} は ${formatDate(ui.date)}（${weekdayName}）に開講予定がありません。別の日付を選択してください。`),
+      h("p", { class: "muted" }, `${campusName} は ${formatDate(ui.date)}（${weekdayName}）に開講予定がありません。別の授業日を選択してください。`),
     ]));
     return wrap;
   }
@@ -217,4 +234,12 @@ function statusClass(status) {
 function formatDate(dateStr) {
   const d = new Date(dateStr + "T00:00:00");
   return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+// 授業日プルダウン用ラベル: 「6/2（火）」
+function formatDayOption(dateStr, masters) {
+  const d = new Date(dateStr + "T00:00:00");
+  const wid = d.getDay() === 0 ? 7 : d.getDay();
+  const weekdayName = masters.weekdays.find((w) => w.id === wid)?.name || "";
+  return `${d.getMonth() + 1}/${d.getDate()}（${weekdayName}）`;
 }
