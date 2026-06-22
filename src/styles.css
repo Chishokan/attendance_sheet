@@ -130,11 +130,13 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; }
 .sticky-col { position: sticky; left: 0; background: #fff; z-index: 2; text-align: left !important; }
 .attendance-table thead .sticky-col { background: #f7f9fc; z-index: 3; }
 .name-cell { min-width: 130px; }
-.no-class { color: #c4ccd8; background: #fafbfd; }
-.att-cell { padding: 4px !important; }
-.att-inner { display: flex; flex-direction: column; align-items: stretch; gap: 3px; min-width: 92px; }
-.subj-tag { font-size: 11px; color: var(--muted); font-weight: 700; }
+.subj-col { white-space: nowrap; color: var(--muted); font-weight: 600; }
+.no-class { background: #fafbfd; }
+.att-cell { padding: 4px !important; min-width: 84px; }
+.reason-cell { padding: 4px !important; min-width: 96px; }
+.reason-th { font-weight: 700; }
 .status-select {
+  width: 100%;
   border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font-size: 13px; font-weight: 700; cursor: pointer;
 }
 .status-present { color: var(--present); border-color: #b7e3c8; background: #f2fbf6; }

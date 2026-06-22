@@ -112,33 +112,37 @@ function buildBoardCard(state, board, campusName, weekdayName) {
     h("span", { class: "saved-indicator" }, "入力は自動保存されます"),
   ]));
 
-  // ヘッダー: 生徒 / 学年 / 各時限
+  // ヘッダー: 生徒名 / 学年 / 受講科目 / 各限目（出席＋理由の2列セット）
   const headRow = h("tr", {}, [
     h("th", { class: "sticky-col" }, "生徒名"),
     h("th", {}, "学年"),
-    ...board.periods.map((pid) =>
+    h("th", {}, "受講科目"),
+    ...board.periods.flatMap((pid) => [
       h("th", {}, [
         h("div", {}, periodLabel(board.periods, pid)),
         h("div", { class: "th-time" }, periodById[pid]?.start || ""),
-      ])
-    ),
+      ]),
+      h("th", { class: "reason-th" }, "理由"),
+    ]),
   ]);
 
   const bodyRows = board.rows.map((row) => {
+    const subjects = [...new Set(row.enrollment.subjects)].map((id) => subjById[id]?.short || "").join(" ");
     const tds = [
       h("td", { class: "sticky-col name-cell" }, [
         h("div", {}, row.student.name || "(氏名不明)"),
         h("div", { class: "kana" }, row.student.kana || ""),
       ]),
       h("td", {}, row.student.grade),
+      h("td", { class: "subj-col" }, subjects),
     ];
     for (const pid of board.periods) {
-      const subjId = row.cells[pid];
-      if (subjId == null) {
-        tds.push(h("td", { class: "no-class" }, "—"));
+      if (row.cells[pid] == null) {
+        // その限目に授業がない生徒は空欄（元スプレッドと同様）
+        tds.push(h("td", { class: "no-class" }, ""), h("td", { class: "no-class" }, ""));
         continue;
       }
-      tds.push(h("td", { class: "att-cell" }, attCell(row.student.code, pid, subjById[subjId])));
+      tds.push(...attCells(row.student.code, pid));
     }
     return h("tr", {}, tds);
   });
@@ -153,11 +157,11 @@ function buildBoardCard(state, board, campusName, weekdayName) {
   return card;
 }
 
-function attCell(code, pid, subject) {
+// 1つの限目について「出席プルダウン」と「理由」の2つの<td>を返す（元スプレッドのレイアウト）。
+function attCells(code, pid) {
   const rec = getAttendance(ui.campusId, ui.date, pid, code) || { status: "出席", reason: "" };
   const reasonInput = h("input", {
     type: "text", class: "reason-input", placeholder: "理由", value: rec.reason || "",
-    style: rec.status === "出席" ? "display:none" : "",
     onchange: (e) => {
       const cur = getAttendance(ui.campusId, ui.date, pid, code) || { status: "出席", reason: "" };
       setAttendance(ui.campusId, ui.date, pid, code, { status: cur.status, reason: e.target.value });
@@ -167,19 +171,17 @@ function attCell(code, pid, subject) {
     class: "status-select status-" + statusClass(rec.status),
     onchange: (e) => {
       const status = e.target.value;
-      const cur = getAttendance(ui.campusId, ui.date, pid, code) || { reason: "" };
-      setAttendance(ui.campusId, ui.date, pid, code, { status, reason: status === "出席" ? "" : cur.reason || "" });
+      const reason = status === "出席" ? "" : reasonInput.value || "";
+      setAttendance(ui.campusId, ui.date, pid, code, { status, reason });
       e.target.className = "status-select status-" + statusClass(status);
-      reasonInput.style.display = status === "出席" ? "none" : "";
       if (status === "出席") reasonInput.value = "";
     },
   }, ATTENDANCE_STATUSES.map((st) => h("option", { value: st, selected: st === rec.status }, st)));
 
-  return h("div", { class: "att-inner" }, [
-    h("div", { class: "subj-tag" }, subject?.short || ""),
-    select,
-    reasonInput,
-  ]);
+  return [
+    h("td", { class: "att-cell" }, select),
+    h("td", { class: "reason-cell" }, reasonInput),
+  ];
 }
 
 function bulkSet(board, status) {
