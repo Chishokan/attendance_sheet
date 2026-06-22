@@ -8,7 +8,6 @@ export function renderMasters(state) {
   wrap.appendChild(periodsCard(state));
   wrap.appendChild(campusesCard(state));
   wrap.appendChild(subjectsCard(state));
-  wrap.appendChild(timetableCard(state));
   return wrap;
 }
 
@@ -112,79 +111,6 @@ function subjectsCard(state) {
       )),
     ]),
   ]);
-}
-
-// ---- 時間割 ----
-function timetableCard(state) {
-  const { timetable, campuses, subjects, weekdays, periods } = state.masters;
-  const campusName = (id) => campuses.find((c) => c.id === id)?.name || id;
-  const subjName = (id) => subjects.find((c) => c.id === id)?.name || id;
-  const weekdayName = (id) => weekdays.find((c) => c.id === id)?.name || id;
-
-  const card = h("div", { class: "card" });
-  card.appendChild(h("h3", {}, "時間割（校舎×学年×科目×曜日×時限）"));
-  card.appendChild(h("p", { class: "muted small" }, "出席簿は、この時間割と受講CSVの科目をもとに自動生成されます。"));
-
-  // 追加フォーム
-  const grades = [...new Set([...timetable.map((t) => t.grade), "中学1年生", "中学2年生", "中学3年生", "小学4年生", "小学5年生", "小学6年生", "高校1年生", "高校2年生", "高校3年生"])];
-  const fCampus = h("select", { class: "input" }, campuses.map((c) => h("option", { value: c.id }, c.name)));
-  const fGrade = h("input", { class: "input", list: "grade-list", placeholder: "学年", value: "中学1年生" });
-  const fGradeList = h("datalist", { id: "grade-list" }, grades.map((g) => h("option", { value: g })));
-  const fSubject = h("select", { class: "input" }, subjects.map((s) => h("option", { value: s.id }, s.name)));
-  const fWeekday = h("select", { class: "input" }, weekdays.map((w) => h("option", { value: w.id }, w.name)));
-  const fPeriod = h("select", { class: "input" }, periods.map((p) => h("option", { value: p.id }, `${p.id}限(${p.start})`)));
-  const addBtn = h("button", { class: "btn primary", onclick: () => {
-    store.update((s) => {
-      s.masters.timetable.push({
-        campusId: Number(fCampus.value), grade: fGrade.value.trim(),
-        subjectId: Number(fSubject.value), weekdayId: Number(fWeekday.value), periodId: Number(fPeriod.value),
-      });
-    });
-  } }, "追加");
-
-  card.appendChild(h("div", { class: "row gap wrap mb timetable-form" }, [
-    fGradeList,
-    field("校舎", fCampus), field("学年", fGrade), field("科目", fSubject),
-    field("曜日", fWeekday), field("時限", fPeriod), addBtn,
-  ]));
-
-  // 一覧（校舎フィルタ）
-  const filterSel = h("select", { class: "input", onchange: (e) => { renderRows(Number(e.target.value)); } },
-    [h("option", { value: "0" }, "全校舎"), ...campuses.map((c) => h("option", { value: c.id }, c.name))]);
-  card.appendChild(field("表示する校舎", filterSel));
-
-  const tbody = h("tbody", {});
-  function renderRows(filterCampus) {
-    tbody.innerHTML = "";
-    const list = timetable
-      .map((t, i) => ({ t, i }))
-      .filter(({ t }) => !filterCampus || t.campusId === filterCampus)
-      .sort((a, b) => a.t.campusId - b.t.campusId || a.t.grade.localeCompare(b.t.grade, "ja") || a.t.weekdayId - b.t.weekdayId || a.t.periodId - b.t.periodId);
-    for (const { t, i } of list) {
-      tbody.appendChild(h("tr", {}, [
-        h("td", {}, campusName(t.campusId)),
-        h("td", {}, t.grade),
-        h("td", {}, subjName(t.subjectId)),
-        h("td", {}, weekdayName(t.weekdayId) + "曜"),
-        h("td", {}, `${t.periodId}限`),
-        h("td", {}, h("button", { class: "btn tiny danger ghost", onclick: () => {
-          store.update((s) => { s.masters.timetable.splice(i, 1); });
-        } }, "削除")),
-      ]));
-    }
-    if (list.length === 0) tbody.appendChild(h("tr", {}, h("td", { colspan: 6, class: "muted" }, "登録がありません。")));
-  }
-  renderRows(0);
-
-  card.appendChild(h("div", { class: "table-scroll" }, [
-    h("table", { class: "data-table compact" }, [
-      h("thead", {}, h("tr", {}, [
-        h("th", {}, "校舎"), h("th", {}, "学年"), h("th", {}, "科目"), h("th", {}, "曜日"), h("th", {}, "時限"), h("th", {}, ""),
-      ])),
-      tbody,
-    ]),
-  ]));
-  return card;
 }
 
 function field(label, control) {

@@ -1,6 +1,6 @@
 import { h, download } from "../lib/dom.js";
 import { getAttendance } from "../lib/store.js";
-import { buildBoard, classDatesInMonth } from "../lib/schedule.js";
+import { classColumns, studentsInClass, patternSubjectIds, classesForCampus } from "../lib/schedule.js";
 import { toCsv } from "../lib/csv.js";
 
 const now = new Date();
@@ -34,14 +34,12 @@ export function renderSummary(state) {
 }
 
 function rerender(wrap, state) {
-  // 簡易: ハッシュ変更なしの再描画はストア通知に任せず、ここで局所更新
-  const fresh = renderSummary(state);
-  wrap.replaceWith(fresh);
+  wrap.replaceWith(renderSummary(state));
 }
 
 function buildSummaryCard(state) {
-  const { masters, students } = state;
-  const rows = computeSummary(masters, students, ui.campusId, ui.year, ui.month);
+  const { masters } = state;
+  const rows = computeSummary(state, ui.campusId, ui.year, ui.month);
   const campusName = masters.campuses.find((c) => c.id === ui.campusId)?.name || "";
 
   const card = h("div", { class: "card" });
@@ -58,13 +56,14 @@ function buildSummaryCard(state) {
   card.appendChild(h("div", { class: "table-scroll" }, [
     h("table", { class: "data-table" }, [
       h("thead", {}, h("tr", {}, [
-        h("th", {}, "生徒名"), h("th", {}, "学年"), h("th", {}, "コマ数"),
+        h("th", {}, "生徒名"), h("th", {}, "学年"), h("th", {}, "クラス"), h("th", {}, "コマ数"),
         h("th", {}, "出席"), h("th", {}, "欠席"), h("th", {}, "遅刻"), h("th", {}, "早退"), h("th", {}, "振替"), h("th", {}, "出席率"),
       ])),
       h("tbody", {}, rows.map((r) =>
         h("tr", {}, [
           h("td", {}, [h("div", {}, r.name), h("div", { class: "kana" }, r.kana)]),
-          h("td", {}, r.grade),
+          h("td", {}, gradeShort(r.grade)),
+          h("td", { class: "small" }, r.classes.join(" / ")),
           h("td", {}, r.total),
           h("td", {}, r.出席),
           h("td", { class: r.欠席 ? "warn-num" : "" }, r.欠席),
@@ -79,25 +78,32 @@ function buildSummaryCard(state) {
   return card;
 }
 
-// 校舎・年月の全開講日についてコマ単位で集計
-function computeSummary(masters, students, campusId, year, month) {
-  const dates = classDatesInMonth(masters.timetable, campusId, year, month);
+// 校舎の全クラス・全コマについて、生徒ごとに集計
+function computeSummary(state, campusId, year, month) {
+  const { masters, students } = state;
+  const campus = masters.campuses.find((c) => c.id === campusId);
+  if (!campus) return [];
   const acc = {}; // code -> stats
-  for (const date of dates) {
-    const board = buildBoard({ timetable: masters.timetable, campuses: masters.campuses, students }, campusId, date);
-    if (!board.hasClass) continue;
-    for (const row of board.rows) {
-      const code = row.student.code;
-      if (!acc[code]) {
-        acc[code] = { name: row.student.name, kana: row.student.kana, grade: row.student.grade,
-          total: 0, 出席: 0, 欠席: 0, 遅刻: 0, 早退: 0, 振替: 0 };
-      }
-      for (const pid of board.periods) {
-        if (row.cells[pid] == null) continue;
-        acc[code].total++;
-        const rec = getAttendance(campusId, date, pid, code);
+  const ensure = (s) => {
+    if (!acc[s.code]) acc[s.code] = { name: s.name, kana: s.kana, grade: s.grade, classes: [],
+      total: 0, 出席: 0, 欠席: 0, 遅刻: 0, 早退: 0, 振替: 0 };
+    return acc[s.code];
+  };
+
+  for (const cls of classesForCampus(masters, campusId)) {
+    const subjectIds = patternSubjectIds(masters, cls.pattern);
+    const columns = classColumns(cls, year, month);
+    const roster = studentsInClass(students, campus, cls, subjectIds);
+    for (const { student, enrollment } of roster) {
+      const stat = ensure(student);
+      if (!stat.classes.includes(cls.name)) stat.classes.push(cls.name);
+      for (const c of columns) {
+        const subjId = c.koma.subjectId;
+        if (!enrollment.subjects.includes(subjId)) continue;
+        stat.total++;
+        const rec = getAttendance(campusId, c.date, subjId, student.code);
         const status = rec ? rec.status : "出席";
-        acc[code][status] = (acc[code][status] || 0) + 1;
+        stat[status] = (stat[status] || 0) + 1;
       }
     }
   }
@@ -105,12 +111,16 @@ function computeSummary(masters, students, campusId, year, month) {
 }
 
 function exportSummary(rows, campusName) {
-  const header = ["生徒名", "学年", "コマ数", "出席", "欠席", "遅刻", "早退", "振替", "出席率"];
+  const header = ["生徒名", "学年", "クラス", "コマ数", "出席", "欠席", "遅刻", "早退", "振替", "出席率"];
   const data = [header, ...rows.map((r) => [
-    r.name, r.grade, r.total, r.出席, r.欠席, r.遅刻, r.早退, r.振替,
+    r.name, r.grade, r.classes.join(" "), r.total, r.出席, r.欠席, r.遅刻, r.早退, r.振替,
     r.total ? `${Math.round((r.出席 / r.total) * 100)}%` : "",
   ])];
   download(`出席集計_${campusName}_${ui.year}-${String(ui.month).padStart(2, "0")}.csv`, toCsv(data), "text/csv;charset=utf-8");
+}
+
+function gradeShort(grade) {
+  return String(grade).replace("中学", "中").replace("年生", "");
 }
 
 function field(label, control) {

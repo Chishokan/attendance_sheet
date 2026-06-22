@@ -76,15 +76,16 @@ export const store = {
 };
 
 // ---- 出席記録のヘルパー ----
-export const attKey = (campusId, date, periodId, code) => `${campusId}|${date}|${periodId}|${code}`;
+// コマ（科目）ごとに記録する。キーは校舎・日付・科目・生徒で安定（時間割編集に影響されない）。
+export const attKey = (campusId, date, subjectId, code) => `${campusId}|${date}|${subjectId}|${code}`;
 
-export function getAttendance(campusId, date, periodId, code) {
-  return store.get().attendance[attKey(campusId, date, periodId, code)] || null;
+export function getAttendance(campusId, date, subjectId, code) {
+  return store.get().attendance[attKey(campusId, date, subjectId, code)] || null;
 }
 
-export function setAttendance(campusId, date, periodId, code, record, { silent = true } = {}) {
+export function setAttendance(campusId, date, subjectId, code, record, { silent = true } = {}) {
   store.update((s) => {
-    const key = attKey(campusId, date, periodId, code);
+    const key = attKey(campusId, date, subjectId, code);
     if (!record || (record.status === "出席" && !record.reason)) {
       // 既定（出席・理由なし）は記録を持たず容量を節約。未記録＝出席扱い。
       delete s.attendance[key];

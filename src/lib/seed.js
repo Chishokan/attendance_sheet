@@ -1,5 +1,5 @@
-// 初期マスタ。元の「出席簿作成」スプレッドシートの設定を反映しています。
-// すべて画面の「設定」から編集できます（個人情報は含みません）。
+// 初期マスタ。クラス（校舎×学年×パターン）を中心にしたモデル。
+// すべて画面の「時間割」「設定」から編集できます（個人情報は含みません）。
 
 export const WEEKDAYS = [
   { id: 1, name: "月" },
@@ -44,36 +44,69 @@ export const PERIODS = [
   { id: 4, start: "20:50" },
 ];
 
-// 時間割: { campusId, grade, subjectId, weekdayId, periodId }
-// 元スプレッドシートの「ID校舎 / 学年 / 科目ID / 曜日ID / 時限」60行を反映。
-const RAW_TIMETABLE = [
-  [1, "中学3年生", 1, 5, 4], [1, "中学3年生", 2, 5, 2], [1, "中学3年生", 3, 5, 3], [1, "中学3年生", 4, 5, 2], [1, "中学3年生", 5, 1, 3],
-  [1, "中学2年生", 1, 3, 4], [1, "中学2年生", 2, 1, 4], [1, "中学2年生", 3, 1, 3], [1, "中学2年生", 4, 3, 2], [1, "中学2年生", 5, 3, 3],
-  [1, "中学1年生", 1, 4, 4], [1, "中学1年生", 2, 4, 2], [1, "中学1年生", 3, 2, 3], [1, "中学1年生", 4, 2, 2], [1, "中学1年生", 5, 3, 3],
-  [2, "中学3年生", 1, 5, 4], [2, "中学3年生", 2, 5, 2], [2, "中学3年生", 3, 5, 3], [2, "中学3年生", 4, 5, 2], [2, "中学3年生", 5, 1, 3],
-  [2, "中学2年生", 1, 4, 4], [2, "中学2年生", 2, 4, 2], [2, "中学2年生", 3, 2, 3], [2, "中学2年生", 4, 2, 2], [2, "中学2年生", 5, 3, 3],
-  [2, "中学1年生", 1, 4, 4], [2, "中学1年生", 2, 4, 2], [2, "中学1年生", 3, 2, 3], [2, "中学1年生", 4, 2, 2], [2, "中学1年生", 5, 3, 3],
-  [3, "中学3年生", 1, 5, 4], [3, "中学3年生", 2, 5, 2], [3, "中学3年生", 3, 5, 3], [3, "中学3年生", 4, 5, 2], [3, "中学3年生", 5, 1, 3],
-  [3, "中学2年生", 1, 4, 4], [3, "中学2年生", 2, 4, 2], [3, "中学2年生", 3, 2, 3], [3, "中学2年生", 4, 2, 2], [3, "中学2年生", 5, 3, 3],
-  [3, "中学1年生", 1, 4, 4], [3, "中学1年生", 2, 4, 2], [3, "中学1年生", 3, 2, 3], [3, "中学1年生", 4, 2, 2], [3, "中学1年生", 5, 3, 3],
-  [5, "中学3年生", 1, 5, 4], [5, "中学3年生", 2, 5, 2], [5, "中学3年生", 3, 5, 3], [5, "中学3年生", 4, 5, 2], [5, "中学3年生", 5, 1, 3],
-  [5, "中学2年生", 1, 4, 4], [5, "中学2年生", 2, 4, 2], [5, "中学2年生", 3, 2, 3], [5, "中学2年生", 4, 2, 2], [5, "中学2年生", 5, 3, 3],
-  [5, "中学1年生", 1, 4, 4], [5, "中学1年生", 2, 4, 2], [5, "中学1年生", 3, 2, 3], [5, "中学1年生", 4, 2, 2], [5, "中学1年生", 5, 3, 3],
+// クラスのパターン。英数＝英・数、国理社＝国・理・社。
+export const PATTERNS = [
+  { id: "英数", name: "英数", subjectIds: [3, 2] },     // 英, 数
+  { id: "国理社", name: "国理社", subjectIds: [1, 4, 5] }, // 国, 理, 社
 ];
 
-export const TIMETABLE = RAW_TIMETABLE.map(([campusId, grade, subjectId, weekdayId, periodId]) => ({
-  campusId, grade, subjectId, weekdayId, periodId,
-}));
+// 中学校学年（クラスを作る学年）
+export const CLASS_GRADES = ["中学1年生", "中学2年生", "中学3年生"];
+
+export function gradeShort(grade) {
+  return String(grade).replace("中学", "中").replace("年生", "");
+}
+
+// パターンごとのコマ（曜日・時限・科目）のひな型。
+// 英数=週2回（数=月 / 英=木）、国理社=週1回（金に 国・理・社）。校舎ごとに編集可能。
+function defaultKomas(pattern) {
+  if (pattern === "英数") {
+    return [
+      { weekdayId: 1, periodId: 3, subjectId: 2, teacher: "" }, // 月 19:50 数
+      { weekdayId: 4, periodId: 3, subjectId: 3, teacher: "" }, // 木 19:50 英
+    ];
+  }
+  return [
+    { weekdayId: 5, periodId: 2, subjectId: 1, teacher: "" }, // 金 18:50 国
+    { weekdayId: 5, periodId: 3, subjectId: 4, teacher: "" }, // 金 19:50 理
+    { weekdayId: 5, periodId: 4, subjectId: 5, teacher: "" }, // 金 20:50 社
+  ];
+}
+
+// クラスを初期生成する校舎（新スプレッドシートに登場する校舎）
+const SEED_CLASS_CAMPUS_IDS = [1, 2, 3, 5];
+
+function buildSeedClasses() {
+  const classes = [];
+  for (const campusId of SEED_CLASS_CAMPUS_IDS) {
+    for (const grade of CLASS_GRADES) {
+      for (const pattern of PATTERNS) {
+        classes.push({
+          id: `${campusId}-${gradeShort(grade)}-${pattern.id}`,
+          campusId,
+          grade,
+          pattern: pattern.id,
+          name: `${gradeShort(grade)}${pattern.id}`,
+          komas: defaultKomas(pattern.id),
+        });
+      }
+    }
+  }
+  return classes;
+}
+
+export const CLASSES = buildSeedClasses();
 
 export const ATTENDANCE_STATUSES = ["出席", "欠席", "遅刻", "早退", "振替"];
 
 export function defaultMasters() {
-  // JSON.parse/stringify でディープコピー（編集してもシードを汚さない）
+  // ディープコピー（編集してもシードを汚さない）
   return JSON.parse(JSON.stringify({
     weekdays: WEEKDAYS,
     campuses: CAMPUSES,
     subjects: SUBJECTS,
     periods: PERIODS,
-    timetable: TIMETABLE,
+    patterns: PATTERNS,
+    classes: CLASSES,
   }));
 }

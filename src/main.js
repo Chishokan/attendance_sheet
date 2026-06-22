@@ -2,12 +2,14 @@ import { h, clear } from "./lib/dom.js";
 import { store } from "./lib/store.js";
 import { renderImport } from "./views/importView.js";
 import { renderAttendance } from "./views/attendanceView.js";
+import { renderTimetable } from "./views/timetableView.js";
 import { renderRoster } from "./views/rosterView.js";
 import { renderMasters } from "./views/mastersView.js";
 import { renderSummary } from "./views/summaryView.js";
 
 const ROUTES = [
   { id: "attendance", label: "出欠入力", render: renderAttendance },
+  { id: "timetable", label: "時間割", render: renderTimetable },
   { id: "import", label: "データ取込", render: renderImport },
   { id: "roster", label: "生徒一覧", render: renderRoster },
   { id: "summary", label: "集計", render: renderSummary },

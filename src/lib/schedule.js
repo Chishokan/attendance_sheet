@@ -1,9 +1,10 @@
-// 時間割（時間割マスタ）と受講情報から、ある校舎・日付の「出席簿」を組み立てる。
+// クラス（校舎×学年×パターン）とそのコマ（曜日・時限・科目）から、
+// 「生徒 × その月の授業日（コマ）」の出席表を組み立てる。
 
 // JS の getDay()(0=日..6=土) を 曜日ID(月=1..日=7) に変換
 export function weekdayIdOfDate(dateStr) {
   const d = new Date(dateStr + "T00:00:00");
-  const js = d.getDay(); // 0=Sun
+  const js = d.getDay();
   return js === 0 ? 7 : js;
 }
 
@@ -14,57 +15,62 @@ export function ymd(date) {
   return `${y}-${m}-${d}`;
 }
 
-// 指定校舎で、その月に授業がある日付の一覧（時間割の曜日に該当する日）を返す。
-export function classDatesInMonth(timetable, campusId, year, month /* 1-12 */) {
-  const weekdays = new Set(timetable.filter((t) => t.campusId === campusId).map((t) => t.weekdayId));
-  const dates = [];
+export function gradeShort(grade) {
+  return String(grade).replace("中学", "中").replace("年生", "");
+}
+
+// あるクラスの、指定年月における全コマを日付順に展開する。
+// 返り値: [{ date, weekdayId, koma }]
+export function classColumns(cls, year, month /* 1-12 */) {
+  const cols = [];
   const last = new Date(year, month, 0).getDate();
   for (let day = 1; day <= last; day++) {
     const date = new Date(year, month - 1, day);
     const js = date.getDay();
     const wid = js === 0 ? 7 : js;
-    if (weekdays.has(wid)) dates.push(ymd(date));
+    for (const koma of cls.komas) {
+      if (koma.weekdayId === wid) cols.push({ date: ymd(date), weekdayId: wid, koma });
+    }
   }
-  return dates;
+  cols.sort((a, b) => a.date.localeCompare(b.date) || a.koma.periodId - b.koma.periodId);
+  return cols;
 }
 
-// ある校舎・日付の出席簿を構築する。
-// 返り値:
-//   { hasClass, periods:[periodId...], rows:[{ student, cells:{periodId: subjectId} }] }
-// - periods: その日に開講される時限の一覧（時間割から導出、昇順）
-// - rows   : その日に1コマ以上授業がある生徒。cells は「その時限に受ける科目」
-export function buildBoard({ timetable, campuses, students }, campusId, dateStr) {
-  const campus = campuses.find((c) => c.id === campusId);
-  if (!campus) return { hasClass: false, periods: [], rows: [] };
-  const wid = weekdayIdOfDate(dateStr);
+// 列を日付ごとにまとめる（2段ヘッダー用）。返り値: [{ date, weekdayId, cols:[...] }]
+export function groupColumnsByDate(cols) {
+  const map = new Map();
+  for (const c of cols) {
+    if (!map.has(c.date)) map.set(c.date, { date: c.date, weekdayId: c.weekdayId, cols: [] });
+    map.get(c.date).cols.push(c);
+  }
+  return [...map.values()];
+}
 
-  // その校舎・曜日の開講コマ
-  const daySessions = timetable.filter((t) => t.campusId === campusId && t.weekdayId === wid);
-  if (daySessions.length === 0) return { hasClass: false, periods: [], rows: [] };
-
-  // 学年→科目→時限 の索引
-  const usedPeriods = new Set();
-  const rows = [];
-
+// クラスに属する生徒（校舎一致・学年一致・パターン科目を1つ以上受講）。
+// 返り値: [{ student, enrollment }]（ふりがな順）
+export function studentsInClass(students, campus, cls, patternSubjectIds) {
+  const list = [];
   for (const code of Object.keys(students)) {
     const s = students[code];
-    // この校舎に在籍している受講情報（複数教室に在籍する生徒に対応）
+    if (s.grade !== cls.grade) continue;
     const enr = s.enrollments.find((e) => e.campus === campus.name);
     if (!enr) continue;
-
-    // この生徒（学年）が、受講科目について当日受けるコマ
-    const cells = {}; // periodId -> subjectId
-    for (const sess of daySessions) {
-      if (sess.grade !== s.grade) continue;
-      if (!enr.subjects.includes(sess.subjectId)) continue;
-      cells[sess.periodId] = sess.subjectId;
-      usedPeriods.add(sess.periodId);
-    }
-    if (Object.keys(cells).length === 0) continue; // 当日授業なし
-    rows.push({ student: s, enrollment: enr, cells });
+    if (!patternSubjectIds.some((id) => enr.subjects.includes(id))) continue;
+    list.push({ student: s, enrollment: enr });
   }
+  list.sort((a, b) => (a.student.kana || a.student.name).localeCompare(b.student.kana || b.student.name, "ja"));
+  return list;
+}
 
-  const periods = [...usedPeriods].sort((a, b) => a - b);
-  rows.sort((a, b) => (a.student.kana || a.student.name).localeCompare(b.student.kana || b.student.name, "ja"));
-  return { hasClass: true, periods, rows };
+// パターンの科目IDを取得
+export function patternSubjectIds(masters, patternId) {
+  return masters.patterns.find((p) => p.id === patternId)?.subjectIds || [];
+}
+
+// 校舎に属するクラス一覧（学年→パターン順）
+export function classesForCampus(masters, campusId) {
+  return masters.classes
+    .filter((c) => c.campusId === campusId)
+    .slice()
+    .sort((a, b) => a.grade.localeCompare(b.grade, "ja") || String(a.pattern).localeCompare(String(b.pattern), "ja"));
 }

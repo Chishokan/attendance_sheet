@@ -1,13 +1,20 @@
-import { h } from "../lib/dom.js";
-import { store, getAttendance, setAttendance } from "../lib/store.js";
-import { buildBoard, classDatesInMonth, weekdayIdOfDate } from "../lib/schedule.js";
+import { h, download } from "../lib/dom.js";
+import { store, getAttendance, setAttendance, attKey } from "../lib/store.js";
+import { classColumns, groupColumnsByDate, studentsInClass, patternSubjectIds, classesForCampus } from "../lib/schedule.js";
 import { ATTENDANCE_STATUSES } from "../lib/seed.js";
 import { toCsv } from "../lib/csv.js";
-import { download } from "../lib/dom.js";
 
-// 画面内で保持する選択状態（再描画をまたいで保持）。日付は持たず月間分をまとめて表示する。
+// 画面内で保持する選択状態（再描画をまたいで保持）。クラス別・月単位で表示する。
 const today = new Date();
-const ui = { campusId: null, year: today.getFullYear(), month: today.getMonth() + 1 };
+const ui = { campusId: null, classId: null, year: today.getFullYear(), month: today.getMonth() + 1 };
+
+// 時間割画面などから「このクラスの出席表」を開くための入口。
+export function selectClass(campusId, classId) {
+  ui.campusId = campusId;
+  ui.classId = classId;
+  if (location.hash !== "#/attendance") location.hash = "#/attendance";
+  else store.update(() => {});
+}
 
 export function renderAttendance(state) {
   const { masters, students } = state;
@@ -22,124 +29,127 @@ export function renderAttendance(state) {
     return wrap;
   }
 
+  // 校舎の初期選択（受講データがある校舎を優先）
   if (ui.campusId == null) {
-    // 受講データのある校舎を初期選択
     const names = new Set();
     Object.values(students).forEach((s) => s.enrollments.forEach((e) => names.add(e.campus)));
     ui.campusId = (masters.campuses.find((c) => names.has(c.name)) || masters.campuses[0]).id;
   }
 
-  const campusName = masters.campuses.find((c) => c.id === ui.campusId)?.name || "";
-  const classDates = classDatesInMonth(masters.timetable, ui.campusId, ui.year, ui.month);
+  const campus = masters.campuses.find((c) => c.id === ui.campusId);
+  const classes = classesForCampus(masters, ui.campusId);
 
-  // ---- 操作バー（校舎別・月別のプルダウン選択） ----
+  // クラスの初期選択／校舎変更時の補正
+  if (!classes.some((c) => c.id === ui.classId)) ui.classId = classes[0]?.id || null;
+  const cls = classes.find((c) => c.id === ui.classId) || null;
+
+  // ---- 操作バー（校舎・クラス・年・月） ----
   wrap.appendChild(h("div", { class: "card toolbar" }, [
     field("校舎", campusSelect(masters)),
+    field("クラス", classSelect(classes)),
     field("年", yearSelect()),
     field("月", monthSelect()),
   ]));
 
-  if (classDates.length === 0) {
+  if (!cls) {
     wrap.appendChild(h("div", { class: "card" }, [
-      h("p", { class: "muted" }, `${campusName} は ${ui.year}年${ui.month}月 に開講予定がありません。校舎・月を変更してください。`),
+      h("p", { class: "muted" }, `${campus?.name || ""} にクラスが登録されていません。「時間割」画面でクラスを追加してください。`),
     ]));
     return wrap;
   }
 
-  // ---- 月間ヘッダー（件数・CSV出力） ----
-  wrap.appendChild(h("div", { class: "card row between wrap" }, [
-    h("div", {}, [
-      h("h2", { class: "mb0" }, `${campusName} ${ui.year}年${ui.month}月 出席簿`),
-      h("div", { class: "muted small" }, `開講 ${classDates.length} 日 ・ 下にスクロールして月間の出欠を確認・入力できます`),
-    ]),
-    h("button", { class: "btn ghost", onclick: () => exportMonthCsv(state, classDates, campusName) }, "月間CSV出力"),
-  ]));
-
-  // ---- 日ごとのセクションを縦に並べる（月間一覧） ----
-  const list = h("div", { class: "month-list" });
-  for (const date of classDates) {
-    const board = buildBoard({ timetable: masters.timetable, campuses: masters.campuses, students }, ui.campusId, date);
-    list.appendChild(buildDaySection(state, board, date));
-  }
-  wrap.appendChild(list);
+  wrap.appendChild(buildClassBoard(state, campus, cls));
   return wrap;
 }
 
-// 1日分の出席簿セクション（見出し＋テーブル）
-function buildDaySection(state, board, dateStr) {
-  const { masters } = state;
+function buildClassBoard(state, campus, cls) {
+  const { masters, students } = state;
   const subjById = Object.fromEntries(masters.subjects.map((s) => [s.id, s]));
   const periodById = Object.fromEntries(masters.periods.map((p) => [p.id, p]));
-  const wid = weekdayIdOfDate(dateStr);
-  const weekdayName = masters.weekdays.find((w) => w.id === wid)?.name || "";
+  const weekdayName = (id) => masters.weekdays.find((w) => w.id === id)?.name || "";
 
-  const section = h("div", { class: "card day-section" });
-  section.appendChild(h("div", { class: "row between wrap day-head" }, [
-    h("h3", { class: "mb0" }, `${formatDate(dateStr)}（${weekdayName}）`),
+  const subjectIds = patternSubjectIds(masters, cls.pattern);
+  const columns = classColumns(cls, ui.year, ui.month);
+  const groups = groupColumnsByDate(columns);
+  const roster = studentsInClass(students, campus, cls, subjectIds);
+
+  const card = h("div", { class: "card" });
+  card.appendChild(h("div", { class: "row between wrap" }, [
+    h("div", {}, [
+      h("h2", { class: "mb0" }, `${campus.name}　${cls.name}`),
+      h("div", { class: "muted small" }, `${ui.year}年${ui.month}月 ・ 生徒 ${roster.length} 名 ・ 横スクロールで全日程を表示`),
+    ]),
     h("div", { class: "row gap" }, [
-      h("span", { class: "muted small" }, `受講者 ${board.rows.length} 名`),
-      board.rows.length
-        ? h("button", { class: "btn tiny", onclick: () => bulkSetDay(board, dateStr, "出席") }, "この日を全員出席")
+      roster.length && columns.length
+        ? h("button", { class: "btn", onclick: () => bulkAllPresent(cls, columns, roster, subjById) }, "全員出席")
         : null,
+      h("button", { class: "btn ghost", onclick: () => exportCsv(state, campus, cls, columns, roster) }, "CSV出力"),
     ]),
   ]));
 
-  if (board.rows.length === 0) {
-    section.appendChild(h("p", { class: "muted small" }, "対象の受講者がいません。"));
-    return section;
+  if (columns.length === 0) {
+    card.appendChild(h("p", { class: "muted mt" }, `${ui.year}年${ui.month}月 はこのクラスの開講日がありません。`));
+    return card;
+  }
+  if (roster.length === 0) {
+    card.appendChild(h("p", { class: "muted mt" }, "このクラスに該当する生徒がいません（校舎・学年・受講科目を確認してください）。"));
+    return card;
   }
 
-  // ヘッダー: 生徒名 / 学年 / 受講科目 / 各限目（出席＋理由の2列セット）
-  const headRow = h("tr", {}, [
-    h("th", { class: "sticky-col" }, "生徒名"),
-    h("th", {}, "学年"),
-    h("th", {}, "受講科目"),
-    ...board.periods.flatMap((pid) => [
-      h("th", {}, [
-        h("div", {}, periodLabel(board.periods, pid)),
-        h("div", { class: "th-time" }, periodById[pid]?.start || ""),
-      ]),
-      h("th", { class: "reason-th" }, "理由"),
-    ]),
+  // 2段ヘッダー: 1段目=日付, 2段目=科目(時刻)
+  const head1 = h("tr", {}, [
+    h("th", { class: "sticky-col", rowspan: 2 }, "生徒名"),
+    h("th", { rowspan: 2 }, "学年"),
+    ...groups.map((g) =>
+      h("th", { colspan: g.cols.length, class: "date-th" }, `${fmtDate(g.date)}（${weekdayName(g.weekdayId)}）`)
+    ),
+  ]);
+  const head2 = h("tr", {}, [
+    ...columns.map((c) =>
+      h("th", { class: "koma-th" }, [
+        h("div", {}, subjById[c.koma.subjectId]?.short || ""),
+        h("div", { class: "th-time" }, periodById[c.koma.periodId]?.start || ""),
+      ])
+    ),
   ]);
 
-  const bodyRows = board.rows.map((row) => {
-    const subjects = [...new Set(row.enrollment.subjects)].map((id) => subjById[id]?.short || "").join(" ");
+  const bodyRows = roster.map(({ student, enrollment }) => {
     const tds = [
       h("td", { class: "sticky-col name-cell" }, [
-        h("div", {}, row.student.name || "(氏名不明)"),
-        h("div", { class: "kana" }, row.student.kana || ""),
+        h("div", {}, student.name || "(氏名不明)"),
+        h("div", { class: "kana" }, student.kana || ""),
       ]),
-      h("td", {}, row.student.grade),
-      h("td", { class: "subj-col" }, subjects),
+      h("td", {}, gradeShortLabel(student.grade)),
     ];
-    for (const pid of board.periods) {
-      if (row.cells[pid] == null) {
-        tds.push(h("td", { class: "no-class" }, ""), h("td", { class: "no-class" }, ""));
+    for (const c of columns) {
+      const subjId = c.koma.subjectId;
+      if (!enrollment.subjects.includes(subjId)) {
+        tds.push(h("td", { class: "no-class" }, "")); // この科目は受講していない
         continue;
       }
-      tds.push(...attCells(row.student.code, pid, dateStr));
+      tds.push(attCell(c.date, subjId, student.code));
     }
     return h("tr", {}, tds);
   });
 
-  section.appendChild(h("div", { class: "table-scroll" }, [
-    h("table", { class: "attendance-table" }, [
-      h("thead", {}, headRow),
+  card.appendChild(h("div", { class: "table-scroll" }, [
+    h("table", { class: "attendance-table grid" }, [
+      h("thead", {}, [head1, head2]),
       h("tbody", {}, bodyRows),
     ]),
   ]));
-  return section;
+  return card;
 }
 
-// 1つの限目について「出席プルダウン」と「理由」の2つの<td>を返す。
-function attCells(code, pid, dateStr) {
-  const rec = getAttendance(ui.campusId, dateStr, pid, code) || { status: "出席", reason: "" };
+// 1コマ分の出席セル（出席プルダウン＋必要時に理由）
+function attCell(date, subjectId, code) {
+  const rec = getAttendance(ui.campusId, date, subjectId, code) || { status: "出席", reason: "" };
   const reasonInput = h("input", {
     type: "text", class: "reason-input", placeholder: "理由", value: rec.reason || "",
+    style: rec.status === "出席" ? "display:none" : "",
     onchange: (e) => {
-      const cur = getAttendance(ui.campusId, dateStr, pid, code) || { status: "出席", reason: "" };
-      setAttendance(ui.campusId, dateStr, pid, code, { status: cur.status, reason: e.target.value });
+      const cur = getAttendance(ui.campusId, date, subjectId, code) || { status: "出席", reason: "" };
+      setAttendance(ui.campusId, date, subjectId, code, { status: cur.status, reason: e.target.value });
     },
   });
   const select = h("select", {
@@ -147,64 +157,60 @@ function attCells(code, pid, dateStr) {
     onchange: (e) => {
       const status = e.target.value;
       const reason = status === "出席" ? "" : reasonInput.value || "";
-      setAttendance(ui.campusId, dateStr, pid, code, { status, reason });
+      setAttendance(ui.campusId, date, subjectId, code, { status, reason });
       e.target.className = "status-select status-" + statusClass(status);
+      reasonInput.style.display = status === "出席" ? "none" : "";
       if (status === "出席") reasonInput.value = "";
     },
   }, ATTENDANCE_STATUSES.map((st) => h("option", { value: st, selected: st === rec.status }, st)));
 
-  return [
-    h("td", { class: "att-cell" }, select),
-    h("td", { class: "reason-cell" }, reasonInput),
-  ];
+  return h("td", { class: "att-cell" }, h("div", { class: "att-inner" }, [select, reasonInput]));
 }
 
-function bulkSetDay(board, dateStr, status) {
+function bulkAllPresent(cls, columns, roster, subjById) {
   store.update((s) => {
-    for (const row of board.rows) {
-      for (const pid of board.periods) {
-        if (row.cells[pid] == null) continue;
-        const key = `${ui.campusId}|${dateStr}|${pid}|${row.student.code}`;
-        if (status === "出席") delete s.attendance[key];
-        else s.attendance[key] = { status, reason: "" };
+    for (const { student, enrollment } of roster) {
+      for (const c of columns) {
+        const subjId = c.koma.subjectId;
+        if (!enrollment.subjects.includes(subjId)) continue;
+        delete s.attendance[attKey(ui.campusId, c.date, subjId, student.code)];
       }
     }
   });
 }
 
-// 月間の出欠をロング形式（1コマ1行）でCSV出力
-function exportMonthCsv(state, classDates, campusName) {
-  const { masters, students } = state;
-  const subjById = Object.fromEntries(masters.subjects.map((s) => [s.id, s]));
-  const periodById = Object.fromEntries(masters.periods.map((p) => [p.id, p]));
-  const header = ["日付", "曜日", "生徒ID", "生徒名", "学年", "受講科目", "限目", "開始時刻", "科目", "出欠", "理由"];
+function exportCsv(state, campus, cls, columns, roster) {
+  const subjById = Object.fromEntries(state.masters.subjects.map((s) => [s.id, s]));
+  const weekdayName = (id) => state.masters.weekdays.find((w) => w.id === id)?.name || "";
+  const header = ["校舎", "クラス", "日付", "曜日", "科目", "生徒ID", "生徒名", "学年", "出欠", "理由"];
   const rows = [header];
-  for (const date of classDates) {
-    const board = buildBoard({ timetable: masters.timetable, campuses: masters.campuses, students }, ui.campusId, date);
-    const wid = weekdayIdOfDate(date);
-    const weekdayName = masters.weekdays.find((w) => w.id === wid)?.name || "";
-    for (const row of board.rows) {
-      const subjects = [...new Set(row.enrollment.subjects)].map((id) => subjById[id]?.short || "").join(" ");
-      for (const pid of board.periods) {
-        const subjId = row.cells[pid];
-        if (subjId == null) continue;
-        const rec = getAttendance(ui.campusId, date, pid, row.student.code) || { status: "出席", reason: "" };
-        rows.push([
-          date, weekdayName, row.student.id || row.student.code, row.student.name, row.student.grade, subjects,
-          periodLabel(board.periods, pid), periodById[pid]?.start || "", subjById[subjId]?.name || "", rec.status, rec.reason || "",
-        ]);
-      }
+  for (const c of columns) {
+    const subjId = c.koma.subjectId;
+    for (const { student, enrollment } of roster) {
+      if (!enrollment.subjects.includes(subjId)) continue;
+      const rec = getAttendance(ui.campusId, c.date, subjId, student.code) || { status: "出席", reason: "" };
+      rows.push([
+        campus.name, cls.name, c.date, weekdayName(c.weekdayId), subjById[subjId]?.name || "",
+        student.id || student.code, student.name, student.grade, rec.status, rec.reason || "",
+      ]);
     }
   }
-  download(`出席簿_${campusName}_${ui.year}-${String(ui.month).padStart(2, "0")}.csv`, toCsv(rows), "text/csv;charset=utf-8");
+  download(`出席簿_${campus.name}_${cls.name}_${ui.year}-${String(ui.month).padStart(2, "0")}.csv`, toCsv(rows), "text/csv;charset=utf-8");
 }
 
 // ---- 操作バーの各プルダウン ----
 function campusSelect(masters) {
   return h("select", {
     class: "input",
-    onchange: (e) => { ui.campusId = Number(e.target.value); rerender(); },
+    onchange: (e) => { ui.campusId = Number(e.target.value); ui.classId = null; rerender(); },
   }, masters.campuses.map((c) => h("option", { value: c.id, selected: c.id === ui.campusId }, c.name)));
+}
+
+function classSelect(classes) {
+  return h("select", {
+    class: "input",
+    onchange: (e) => { ui.classId = e.target.value; rerender(); },
+  }, classes.map((c) => h("option", { value: c.id, selected: c.id === ui.classId }, c.name)));
 }
 
 function yearSelect() {
@@ -232,16 +238,15 @@ function field(label, control) {
   return h("label", { class: "field" }, [h("span", { class: "field-label" }, label), control]);
 }
 
-function periodLabel(periods, pid) {
-  // 当日開講される時限を 1限目, 2限目… と連番表示
-  return `${periods.indexOf(pid) + 1}限目`;
-}
-
 function statusClass(status) {
   return { 出席: "present", 欠席: "absent", 遅刻: "late", 早退: "early", 振替: "makeup" }[status] || "present";
 }
 
-function formatDate(dateStr) {
+function fmtDate(dateStr) {
   const d = new Date(dateStr + "T00:00:00");
   return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function gradeShortLabel(grade) {
+  return String(grade).replace("中学", "中").replace("年生", "");
 }

@@ -121,28 +121,26 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; }
 .warn-num { color: var(--absent); font-weight: 700; }
 .preview { margin-top: 12px; }
 
-/* ---- 出席簿 ---- */
-.month-list { display: flex; flex-direction: column; gap: 16px; }
+/* ---- 出席簿（クラス別グリッド） ---- */
 .mb0 { margin: 0; }
-.day-section { padding: 14px 16px; }
-.day-head { margin-bottom: 10px; }
-.day-head h3 { font-size: 15px; }
+.mt { margin-top: 10px; }
+.attendance-table { margin-top: 12px; }
 .attendance-table th, .attendance-table td {
   border: 1px solid var(--line); padding: 6px 8px; text-align: center; white-space: nowrap;
 }
 .attendance-table th { background: #f7f9fc; }
 .th-time { font-size: 11px; color: var(--muted); font-weight: 400; }
+.date-th { background: #eef3fb; }
+.koma-th { font-weight: 700; }
 .sticky-col { position: sticky; left: 0; background: #fff; z-index: 2; text-align: left !important; }
 .attendance-table thead .sticky-col { background: #f7f9fc; z-index: 3; }
-.name-cell { min-width: 130px; }
-.subj-col { white-space: nowrap; color: var(--muted); font-weight: 600; }
+.name-cell { min-width: 120px; }
 .no-class { background: #fafbfd; }
-.att-cell { padding: 4px !important; min-width: 84px; }
-.reason-cell { padding: 4px !important; min-width: 96px; }
-.reason-th { font-weight: 700; }
+.att-cell { padding: 3px !important; }
+.att-inner { display: flex; flex-direction: column; gap: 3px; min-width: 76px; }
 .status-select {
   width: 100%;
-  border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font-size: 13px; font-weight: 700; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 6px; padding: 4px 4px; font-size: 13px; font-weight: 700; cursor: pointer;
 }
 .status-present { color: var(--present); border-color: #b7e3c8; background: #f2fbf6; }
 .status-absent { color: var(--absent); border-color: #f0c2c2; background: #fdf2f2; }
@@ -150,8 +148,14 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; }
 .status-early { color: var(--early); border-color: #e6c6ef; background: #fbf3fd; }
 .status-makeup { color: var(--makeup); border-color: #c2d4f7; background: #f2f6fd; }
 .reason-input { border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font-size: 12px; width: 100%; }
-.saved-indicator { color: var(--muted); font-size: 12px; align-self: center; }
-.timetable-form { align-items: flex-end; }
+
+/* ---- 時間割管理 ---- */
+.class-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.class-card { padding: 14px 16px; }
+.class-card-head { margin-bottom: 8px; }
+.class-card .komas { margin-top: 4px; }
+.class-card .komas td { vertical-align: middle; }
+.koma-row .input.narrow { min-width: 64px; width: 100%; }
 
 @media (max-width: 640px) {
   .brand-sub { display: none; }
