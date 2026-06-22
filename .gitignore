@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+*.log
+# 個人情報を含む実データCSVは絶対にコミットしない
+data/
+*_personal.csv
+会員CSV.csv
+受講CSV.csv

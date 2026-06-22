@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>出席簿アプリ</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-mark">出</span>
+        <div>
+          <h1>出席簿アプリ</h1>
+          <p class="brand-sub">Grow CSV → 出席簿作成・出欠入力</p>
+        </div>
+      </div>
+      <nav id="nav" class="nav"></nav>
+    </header>
+    <main id="app" class="app-main"></main>
+    <footer class="app-footer">
+      <span>データはブラウザ内（localStorage）に保存されます。共有・バックアップは「設定」からエクスポートしてください。</span>
+    </footer>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

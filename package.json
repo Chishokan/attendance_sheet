@@ -1,0 +1,13 @@
+{
+  "name": "attendance-sheet",
+  "version": "1.0.0",
+  "description": "Grow顧客管理システムのCSVから出席簿を作成し、画面で出欠を入力・集計する独立Webアプリ（ビルド不要）",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "serve": "node server.js"
+  },
+  "keywords": ["attendance", "出席簿", "grow", "塾"],
+  "license": "MIT",
+  "private": true
+}
