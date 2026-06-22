@@ -58,9 +58,31 @@ python3 -m http.server 8000
 - 端末間の共有・引き継ぎ・バックアップは「設定 → バックアップを書き出す／復元」（JSON）を使ってください。
 - **実在の生徒氏名・保護者メール・住所等の個人情報はリポジトリにコミットしないでください。** `.gitignore` で実データ CSV を除外しています。
 
+## 公開（Vercel）
+
+ビルド不要の静的サイトとして、リポジトリをそのままデプロイできます。
+
+1. Vercel で本リポジトリを **Import**
+2. Framework Preset は **Other**（同梱の `vercel.json` により Build / Install を実行せず、ルートの `index.html` を配信します）
+3. **Deploy**
+
+CLI からの場合:
+
+```bash
+npm i -g vercel
+vercel        # プレビュー
+vercel --prod # 本番
+```
+
+`vercel.json` で `buildCommand`・`installCommand` を無効化し、リポジトリ直下を静的配信する設定にしています（`server.js` はローカル確認専用で本番では使われません）。
+
+### 公開時の注意（個人情報）
+
+デプロイ後の URL は誰でもアクセスできます。本アプリ自体は出席データをサーバーに送らず各利用者のブラウザ内に保存しますが、URL を共有する相手は限定してください（社内限定運用や Vercel の保護機能の利用を推奨）。
+
 ## 公開（GitHub Pages）
 
-このリポジトリをそのまま GitHub Pages（ブランチ／`/` ルート）で公開すれば、`index.html` がそのまま動きます（ビルド不要）。
+GitHub Pages（ブランチ／`/` ルート）でも、`index.html` がそのまま動きます（ビルド不要）。
 
 ## ファイル構成
 
