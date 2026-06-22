@@ -122,6 +122,11 @@ table { border-collapse: collapse; width: 100%; font-size: 14px; }
 .preview { margin-top: 12px; }
 
 /* ---- 出席簿 ---- */
+.month-list { display: flex; flex-direction: column; gap: 16px; }
+.mb0 { margin: 0; }
+.day-section { padding: 14px 16px; }
+.day-head { margin-bottom: 10px; }
+.day-head h3 { font-size: 15px; }
 .attendance-table th, .attendance-table td {
   border: 1px solid var(--line); padding: 6px 8px; text-align: center; white-space: nowrap;
 }
